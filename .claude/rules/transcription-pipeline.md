@@ -73,3 +73,29 @@ settings.json, so a higher default silently switches every installed copy to bat
 next launch and trades away cross-chunk `condition_on_previous_text`. The default compute device
 is also `cpu`, where there is least parallel-decode headroom to win back. The worker and the
 config declare the default separately, so both are pinned by tests.
+
+## Voice profiles (#128)
+
+Opt-in (`diarization.voice_profiles`, default False). Logic lives in
+`app/transcription/voice_profiles.py` (numpy + JSON only, no Qt/torch).
+
+- **Only names the user typed train profiles.** A name auto-filled from a match and left
+  untouched never trains (`trained_names` drops it by comparing against `voice_matches.json`).
+  Otherwise a wrong match reinforces itself every time the recording is saved.
+- **The store keeps contributions, not averages**: one entry per (recording dir name, speaker
+  label). `SpeakerNamePanel` emits `names_changed` on every keystroke, so `set_recording`
+  replaces a recording's contributions wholesale. That makes repeats idempotent, moves a voice
+  when it is renamed, and drops it when the name is cleared.
+- **The store re-reads its file on every call.** Settings deletes profiles through its own
+  `VoiceProfileStore` instance; a cached instance in MainWindow would write them back.
+- **Centroids come from `DiarizeOutput.speaker_embeddings`**, row `i` = `labels()[i]`. pyannote
+  pads rows with zeros for speakers it could not embed; `clean_embedding` rejects those.
+- Every vector carries `EMBEDDING_MODEL_ID`; vectors from another model are never compared or
+  averaged. Change the id whenever the diarization model changes.
+- `_apply_voice_profiles` runs in `_on_diarization_finished` *before* display and writes
+  `speaker_names.json`, so the displayed and the not-displayed (#19) paths both pick the names
+  up. It never raises: matching must not cost the user a finished transcript. Only unnamed
+  speakers get a name, and never a name already used in the recording.
+- `MATCH_THRESHOLD = 0.6` (cosine). Calibration notes are next to the constant. Same-meeting
+  pairs scored 0.88-0.92 and different people at most 0.44; cross-meeting pairs will score
+  lower, so recalibrate with real cross-meeting data before raising it.
