@@ -48,6 +48,7 @@ COMPILE_CACHE_DIR = Path.home() / ".talktrack" / "openvino_cache"
 # transcriptions like transcriber._MODEL_CACHE.
 _PIPELINE_CACHE = {}
 _PIPELINE_CACHE_LOCK = threading.Lock()
+_GENERATE_LOCK = threading.Lock()
 
 
 def model_repo(model_size):
@@ -193,39 +194,51 @@ class BatchResult:
     language: str = ""
 
 
-def transcribe(pipeline, audio, language=None, max_batch_seconds=MAX_BATCH_SECONDS):
-    """Transcribe the speech in `audio` (16 kHz float32), yielding one BatchResult per batch.
+def decode_batch(pipeline, audio, batch, token):
+    """Transcribe one batch of speech regions of `audio`; times are in `audio`'s timeline.
 
-    With no language given, the first batch detects it and later batches reuse
-    it, as faster-whisper detects once per recording.
+    ``token`` is the language token, or None to detect. Returns a BatchResult
+    whose ``language`` is what the model reported (detected or pinned).
     """
     import numpy as np
 
-    token = language_token(language)
-    regions = speech_regions(audio, max_speech_seconds=max_batch_seconds)
-    for batch in plan_batches(regions, int(max_batch_seconds * SAMPLE_RATE)):
-        time_map = TimeMap(batch)
-        speech = np.concatenate([audio[start:end] for start, end in batch])
+    time_map = TimeMap(batch)
+    speech = np.concatenate([audio[start:end] for start, end in batch])
 
+    # One generate() at a time per pipeline: a recording being transcribed live
+    # (#139) and the queue's job can share it.
+    with _GENERATE_LOCK:
         config = pipeline.get_generation_config()
         config.task = "transcribe"
         config.return_timestamps = True
         config.language = token
         result = pipeline.generate(speech, config)
 
-        detected = (getattr(result, "language", "") or "").strip("<|>")
-        if token is None and detected:
-            token = language_token(detected)
+    detected = (getattr(result, "language", "") or "").strip("<|>")
+    segments = []
+    for chunk in result.chunks:
+        text = chunk.text.strip()
+        if not text:
+            continue
+        start, end = float(chunk.start_ts), float(chunk.end_ts)
+        if not math.isfinite(end) or end < start:
+            end = time_map.duration  # final chunk with no closing timestamp
+        segments.append(
+            (time_map.to_original(start), time_map.to_original(end, is_end=True), text)
+        )
+    return BatchResult(segments=segments, language=detected)
 
-        segments = []
-        for chunk in result.chunks:
-            text = chunk.text.strip()
-            if not text:
-                continue
-            start, end = float(chunk.start_ts), float(chunk.end_ts)
-            if not math.isfinite(end) or end < start:
-                end = time_map.duration  # final chunk with no closing timestamp
-            segments.append(
-                (time_map.to_original(start), time_map.to_original(end, is_end=True), text)
-            )
-        yield BatchResult(segments=segments, language=detected)
+
+def transcribe(pipeline, audio, language=None, max_batch_seconds=MAX_BATCH_SECONDS):
+    """Transcribe the speech in `audio` (16 kHz float32), yielding one BatchResult per batch.
+
+    With no language given, the first batch detects it and later batches reuse
+    it, as faster-whisper detects once per recording.
+    """
+    token = language_token(language)
+    regions = speech_regions(audio, max_speech_seconds=max_batch_seconds)
+    for batch in plan_batches(regions, int(max_batch_seconds * SAMPLE_RATE)):
+        result = decode_batch(pipeline, audio, batch, token)
+        if token is None and result.language:
+            token = language_token(result.language)
+        yield result

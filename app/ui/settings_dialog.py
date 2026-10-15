@@ -253,6 +253,14 @@ class SettingsDialog(QDialog):
         )
         whisper_form.addRow("Batch size:", self.batch_size_spin)
 
+        self.live_cb = QCheckBox("Transcribe while recording (Intel GPU)")
+        self.live_cb.setToolTip(
+            "Transcribes each recording as it is recorded, so the transcript is\n"
+            "ready seconds after Stop instead of minutes. Uses the Intel GPU during\n"
+            "calls; only available with the Intel GPU compute device."
+        )
+        whisper_form.addRow("", self.live_cb)
+
         transcription_layout.addWidget(whisper_group)
 
         # Diarization group
@@ -442,6 +450,8 @@ class SettingsDialog(QDialog):
 
         batch_size = self.config.get("transcription", "batch_size")
         self.batch_size_spin.setValue(batch_size if batch_size else 1)
+        self.live_cb.setChecked(bool(self.config.get("transcription", "live")))
+        self.live_cb.setEnabled(self.device_combo.currentData() == "intel_gpu")
 
         # Diarization
         self.diarization_enabled.setChecked(self.config.get("diarization", "enabled"))
@@ -512,6 +522,7 @@ class SettingsDialog(QDialog):
         self.config.set("transcription", "language", lang if lang else None)
         self.config.set("transcription", "min_duration", self.min_duration_spin.value())
         self.config.set("transcription", "batch_size", self.batch_size_spin.value())
+        self.config.set("transcription", "live", self.live_cb.isChecked())
 
         self.config.set("diarization", "enabled", self.diarization_enabled.isChecked())
         self.config.set("diarization", "hf_token", self.hf_token_edit.text().strip())
@@ -639,6 +650,8 @@ class SettingsDialog(QDialog):
 
     def _on_device_changed(self, index):
         device = self.device_combo.currentData()
+        if hasattr(self, "live_cb"):
+            self.live_cb.setEnabled(device == "intel_gpu")
         if device == "intel_gpu":
             self._show_intel_gpu_status()
             return

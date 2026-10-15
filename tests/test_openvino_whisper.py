@@ -173,6 +173,23 @@ class TestTranscribe(unittest.TestCase):
         self.assertEqual(pipeline.calls, [])
 
 
+class TestDecodeBatch(unittest.TestCase):
+    """The live worker (#139) and the queue's job can share one pipeline."""
+
+    def test_generate_runs_under_the_shared_lock(self):
+        pipeline = _FakePipeline([([_chunk(0, 1, "oi")], "pt")])
+        held = []
+        original = pipeline.generate
+        pipeline.generate = lambda audio, config: (held.append(ovw._GENERATE_LOCK.locked()),
+                                                   original(audio, config))[1]
+        audio = np.zeros(5 * SR, dtype=np.float32)
+        result = ovw.decode_batch(pipeline, audio, [(SR, 3 * SR)], "<|pt|>")
+        self.assertEqual(held, [True])
+        self.assertFalse(ovw._GENERATE_LOCK.locked())
+        self.assertEqual(result.segments, [(1.0, 2.0, "oi")])
+        self.assertEqual(pipeline.calls, [(2.0, "<|pt|>")])
+
+
 class TestLanguageToken(unittest.TestCase):
     def test_plain_code_is_wrapped(self):
         self.assertEqual(ovw.language_token("pt"), "<|pt|>")
