@@ -96,6 +96,8 @@ Opt-in (`diarization.voice_profiles`, default False). Logic lives in
   `speaker_names.json`, so the displayed and the not-displayed (#19) paths both pick the names
   up. It never raises: matching must not cost the user a finished transcript. Only unnamed
   speakers get a name, and never a name already used in the recording.
-- `MATCH_THRESHOLD = 0.6` (cosine). Calibration notes are next to the constant. Same-meeting
-  pairs scored 0.88-0.92 and different people at most 0.44; cross-meeting pairs will score
-  lower, so recalibrate with real cross-meeting data before raising it.
+- `MATCH_THRESHOLD = 0.75` (cosine). The data is next to the constant. Across real meetings the
+  same person scored 0.849-0.950 and different people up to 0.631; at the first value, 0.6, a
+  0.627 impostor auto-filled someone who was not in the meeting. `TestDefaultThreshold` pins
+  those scores. Lower it only with new cross-meeting data; a missed match costs a typed name,
+  a wrong one costs wrong minutes.

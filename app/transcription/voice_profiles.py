@@ -28,12 +28,15 @@ logger = logging.getLogger(__name__)
 EMBEDDING_MODEL_ID = "pyannote/speaker-diarization-community-1"
 
 # Minimum cosine similarity between a speaker centroid and a profile to
-# auto-fill the name. Calibrated on a real 5-person Teams call (pt-BR, CPU)
-# diarized as two independent halves: same-person pairs scored 0.88 and 0.92,
-# the 10 different-person pairs 0.12-0.44 (mean 0.29). Across separate
-# meetings (other day, mic, codec) same-person scores will run lower, so the
-# threshold sits well below the genuine pairs rather than midway.
-MATCH_THRESHOLD = 0.6
+# auto-fill the name. First calibrated at 0.6 on one 5-person Teams call
+# (pt-BR) split in halves: same person 0.88 and 0.92, different people
+# 0.12-0.44. Real use across four meetings on three days then showed:
+#   same person, other meeting: 0.849, 0.857, 0.908, 0.924, 0.927, 0.950
+#   different person:           up to 0.605, 0.627, 0.631 (one auto-filled
+#                               a name that was not in the meeting)
+# 0.75 sits in the middle of that gap. A missed match only leaves a name to
+# type; a wrong one puts the wrong person in the minutes.
+MATCH_THRESHOLD = 0.75
 
 PROFILES_PATH = CONFIG_DIR / "voice_profiles.json"
 EMBEDDINGS_FILE = "speaker_embeddings.json"   # per recording: label -> centroid

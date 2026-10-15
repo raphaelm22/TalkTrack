@@ -114,6 +114,30 @@ class TestMatchSpeakers(unittest.TestCase):
         self.assertAlmostEqual(matches["SPEAKER_00"][1], 1.0)
 
 
+def _at_cosine(profile, other, cosine):
+    """A vector at exactly `cosine` similarity to unit `profile`, leaning toward `other`."""
+    return cosine * profile + np.sqrt(1 - cosine ** 2) * other
+
+
+class TestDefaultThreshold(unittest.TestCase):
+    """Scores seen in real meetings (see the notes on MATCH_THRESHOLD)."""
+
+    def _match(self, cosine):
+        return vp.match_speakers({"SPEAKER_00": _at_cosine(ALICE, BOB, cosine)},
+                                 {"Alice": ALICE})
+
+    def test_different_people_seen_in_real_meetings_stay_unnamed(self):
+        # 0.627 auto-filled a person who was not in the meeting under 0.6.
+        for cosine in (0.605, 0.627, 0.631, 0.7):
+            with self.subTest(cosine=cosine):
+                self.assertEqual(self._match(cosine), {})
+
+    def test_same_person_in_another_meeting_is_still_recognised(self):
+        for cosine in (0.849, 0.857, 0.908, 0.95):
+            with self.subTest(cosine=cosine):
+                self.assertEqual(self._match(cosine)["SPEAKER_00"][0], "Alice")
+
+
 class TestTrainedNames(unittest.TestCase):
     def test_untouched_auto_fill_does_not_train(self):
         names = {"SPEAKER_00": "Alice"}
