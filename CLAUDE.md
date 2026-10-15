@@ -54,6 +54,7 @@ TalkTrack/
       transcriber.py                   # Whisper worker + dataclasses
       openvino_whisper.py              # Whisper on an Intel GPU via OpenVINO GenAI (#131)
       diarizer.py                      # Speaker diarization (pyannote)
+      chunk_embeddings.py              # One embedding pass per chunk, not per speaker (#133)
     ai/
       __init__.py                      # Package init
       provider.py                      # AIProvider base class
@@ -119,6 +120,7 @@ TalkTrack/
     test_recorder.py                   # MP3 conversion + WAV replacement tests
     test_recordings_salvage.py         # Crash-orphan salvage tests
     test_diarizer.py                   # Diarization device selection + CUDA OOM fallback tests
+    test_chunk_embeddings.py           # Per-chunk embeddings equal pyannote's per-speaker loop
     test_system_monitor_start.py       # Test Mic monitor construction regression (#79)
   resources/
     style.qss                          # Dark theme stylesheet (Catppuccin Mocha)
