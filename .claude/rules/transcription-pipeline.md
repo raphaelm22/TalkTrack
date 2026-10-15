@@ -105,3 +105,32 @@ not a device flag.
   (`ZE_RESULT_ERROR_DEVICE_LOST`, 2/2 runs); only small ran. Revisit with newer drivers.
 - The pip spec lives in `openvino_whisper.PIP_PACKAGE`, `package_installer.PROVIDER_PACKAGES`
   and the `openvino` extra; `test_openvino_whisper.TestPackageDeclarations` keeps them equal.
+
+## Transcribing while recording (#139)
+
+`transcription.live` (default off, `intel_gpu` only, and only with auto-transcribe) starts a
+`LiveTranscriptionWorker` when recording starts. It reads the track files as `ChunkWriter`
+writes them (see audio-pipeline rules), transcribes settled speech, and at Stop finishes from the
+final combined file. A 7.4-minute meeting had its transcript 7.8 s after Stop instead of 60 s.
+
+- **One worker per recording directory** in `MainWindow._live_workers`, from recording start until
+  that recording's job runs. A recording can stop while another job is still diarizing, so its
+  worker waits idle in the dict while the next recording starts its own.
+- **The job, not the recording, takes the worker.** `_start_transcription` keeps the queue rules
+  unchanged; when the job comes up, `_take_live_worker` hands the worker over if it is usable and
+  `finish()` accepts. The worker then *is* `_transcription_worker` (same signals), so the busy
+  check, cancel and the diarization hand-off work unchanged.
+- **Falling back is the default answer.** A worker that failed (no GPU, driver hang, unreadable
+  track) is dropped and the recording is transcribed normally. `finish()` and the worker's
+  failure share a lock, so a failure after `finish()` was accepted emits `fallback`, and
+  `_on_live_transcription_fallback` starts a normal `TranscriptionWorker` in the same job slot.
+- **Every path that ends a recording ends its worker.** STOPPING → `stop_reading()` (before files
+  close); discarded or not auto-transcribed → `cancel()`; app exit → `_shutdown_workers` cancels
+  and waits.
+- **`openvino_whisper._GENERATE_LOCK`** serializes `generate()` on the shared pipeline: a live
+  recording and the queue's job can both be transcribing.
+- Settled speech only: regions that ended `SETTLE_SECONDS` (3 s, more than the VAD's 2 s silence)
+  before the write head, in batches of at least `MIN_BATCH_SECONDS` (30 s) for context. The live
+  level follows the running peak; the global peak of the final mix is only known at Stop.
+  Text agreement with a normal transcript was 0.886, within Whisper's own variance (60 s vs 30 s
+  batches of the same file: 0.844).

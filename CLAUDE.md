@@ -53,6 +53,7 @@ TalkTrack/
     transcription/
       transcriber.py                   # Whisper worker + dataclasses
       openvino_whisper.py              # Whisper on an Intel GPU via OpenVINO GenAI (#131)
+      live_transcriber.py              # Transcribe while recording, from the track files (#139)
       diarizer.py                      # Speaker diarization (pyannote)
     ai/
       __init__.py                      # Package init
@@ -103,6 +104,8 @@ TalkTrack/
     test_dependency_checker.py        # Dependency checker tests
     test_transcriber.py               # TranscriptSegment/TranscriptResult tests
     test_openvino_whisper.py          # Intel GPU backend: VAD batching, time mapping, pipeline cache
+    test_live_transcriber.py          # Live transcription: track reading, settled batches, worker (#139)
+    test_live_transcription_window.py # MainWindow start/stop/queue/fallback for live transcription
     test_segment_player.py            # Audio clip playback tests
     test_recording_header.py          # RecordingHeader helper tests
     test_speaker_name_panel.py        # SpeakerNamePanel helper tests
@@ -143,7 +146,7 @@ TalkTrack/
 - Dual audio capture: microphone (your voice) + system/app audio
 - **Dual microphone support:** optionally use 2 mics simultaneously (e.g., desk mic + headset), mixed into one track
 - Auto-transcribes after recording stops using Faster-Whisper
-- **Intel GPU transcription (opt-in, Settings > Transcription > Compute Device):** runs Whisper on the integrated GPU through OpenVINO GenAI (installed on demand), several times faster than the CPU on Core Ultra laptops; falls back to the CPU when unavailable
+- **Intel GPU transcription (opt-in, Settings > Transcription > Compute Device):** runs Whisper on the integrated GPU through OpenVINO GenAI (installed on demand), several times faster than the CPU on Core Ultra laptops; falls back to the CPU when unavailable. Optionally transcribes while recording (#139), so the transcript is ready seconds after Stop
 - Speaker diarization with two modes:
   - Simple mode (no setup): labels "You" vs "Remote" based on mic vs system channels
   - Full diarization (pyannote.audio): identifies individual speakers
@@ -249,7 +252,7 @@ TalkTrack/
 - Stored at ~/.talktrack/settings.json
 - Audio settings: sample_rate, channels, capture_mode ("legacy" or "per_app"), selected_apps, hidden_devices, mic_count (1 or 2)
 - Audio device selection is per-session (not persisted), but capture mode and selected apps are persisted
-- Transcription settings: model size (tiny/base/small/medium/large-v3/large-v3-turbo), language, compute device (cpu/cuda/intel_gpu), min_duration, batch_size (1 = sequential; see transcription-pipeline rules before changing the default)
+- Transcription settings: model size (tiny/base/small/medium/large-v3/large-v3-turbo), language, compute device (cpu/cuda/intel_gpu), min_duration, batch_size (1 = sequential; see transcription-pipeline rules before changing the default), live (transcribe while recording; intel_gpu only, default off)
 - AI settings: provider (none/claude/openai/grok/gemini/mistral/groq/local), provider_settings (per-provider api_key/model), auto_summarize
 - General settings: min_recording_length, auto_record, silence_auto_stop, silence_duration
 
