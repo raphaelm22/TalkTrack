@@ -116,8 +116,32 @@ not a device flag.
   (`model_cache_dir`; System Status checks that path when Intel GPU is selected). The first
   load compiles for the GPU (~40 s); the compiled blob is cached in `~/.talktrack/openvino_cache`.
 - OpenVINO returns no per-segment log-probability, so these segments keep `confidence = 0.0`.
-- Diarization stays on the CPU: `diarizer._resolve_device` maps `intel_gpu` to `cpu`.
+- pyannote stays a torch pipeline on the CPU (`diarizer._resolve_device` maps `intel_gpu` to
+  `cpu`); only its embedding network moves to the GPU, see below.
 - **No NPU option.** On a Core Ultra 7 265U NPU, large-v3-turbo hangs the device
   (`ZE_RESULT_ERROR_DEVICE_LOST`, 2/2 runs); only small ran. Revisit with newer drivers.
 - The pip spec lives in `openvino_whisper.PIP_PACKAGE`, `package_installer.PROVIDER_PACKAGES`
   and the `openvino` extra; `test_openvino_whisper.TestPackageDeclarations` keeps them equal.
+
+## Speaker embeddings on the Intel GPU (#135)
+
+With `intel_gpu` selected, `DiarizationWorker` compiles pyannote's WeSpeaker ResNet34 trunk for the
+GPU (`openvino_embeddings.get_trunk`) and hands it to `chunk_embeddings.set_accelerator`. On a
+5-minute excerpt: 267 s (pyannote as is) → 63–100 s (#133, CPU) → 18.5 s, DER 0.0002, centroids
+at cosine ≥ 0.99999.
+
+- **Only the trunk moves.** fbank before it and the per-speaker pooling after it stay in torch
+  on the CPU: they are cheap, and pooling is where each local speaker's weights apply.
+- **Set the accelerator on every run, including to None.** The `cpu` and `intel_gpu` settings
+  share the `(token, "cpu")` pipeline in `_PIPELINE_CACHE`; a stale accelerator would keep
+  using the GPU after the user switched back.
+- **Failures fall back, as transcription does.** At build time (`_intel_gpu_trunk` returns None)
+  the run stays on the CPU. Mid-run, `chunk_embeddings._embed` keeps the error on
+  `accelerator.error` and finishes on the CPU; the worker then calls `release_trunks()` and says so.
+- **The model is converted locally**, since pyannote's weights are gated and cannot ship. First use
+  traces the trunk (~60 s) to `openvino_cache/wespeaker-trunk-<weights hash>.xml`. The hash covers
+  the weights, so a pyannote model update converts again rather than reusing a stale IR.
+- The trunk is compiled with a static shape (embedding batch size × one chunk's fbank frames);
+  short batches are zero-padded. A different shape raises and falls back rather than reshaping.
+- NPU ran the trunk too (1.1 s vs 1.7 s per batch) but compiles in 30 s instead of 5, and is
+  where large-v3-turbo hung. The GPU was as fast end to end, so it is the only target.

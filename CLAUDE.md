@@ -55,6 +55,7 @@ TalkTrack/
       openvino_whisper.py              # Whisper on an Intel GPU via OpenVINO GenAI (#131)
       diarizer.py                      # Speaker diarization (pyannote)
       chunk_embeddings.py              # One embedding pass per chunk, not per speaker (#133)
+      openvino_embeddings.py           # Speaker-embedding network on an Intel GPU (#135)
     ai/
       __init__.py                      # Package init
       provider.py                      # AIProvider base class
@@ -121,6 +122,7 @@ TalkTrack/
     test_recordings_salvage.py         # Crash-orphan salvage tests
     test_diarizer.py                   # Diarization device selection + CUDA OOM fallback tests
     test_chunk_embeddings.py           # Per-chunk embeddings equal pyannote's per-speaker loop
+    test_openvino_embeddings.py        # Embedding trunk on the Intel GPU + CPU fallback (#135)
     test_system_monitor_start.py       # Test Mic monitor construction regression (#79)
   resources/
     style.qss                          # Dark theme stylesheet (Catppuccin Mocha)
@@ -145,7 +147,7 @@ TalkTrack/
 - Dual audio capture: microphone (your voice) + system/app audio
 - **Dual microphone support:** optionally use 2 mics simultaneously (e.g., desk mic + headset), mixed into one track
 - Auto-transcribes after recording stops using Faster-Whisper
-- **Intel GPU transcription (opt-in, Settings > Transcription > Compute Device):** runs Whisper on the integrated GPU through OpenVINO GenAI (installed on demand), several times faster than the CPU on Core Ultra laptops; falls back to the CPU when unavailable
+- **Intel GPU transcription (opt-in, Settings > Transcription > Compute Device):** runs Whisper on the integrated GPU through OpenVINO GenAI (installed on demand), several times faster than the CPU on Core Ultra laptops, and pyannote's speaker-embedding network with it (#135); falls back to the CPU when unavailable
 - Speaker diarization with two modes:
   - Simple mode (no setup): labels "You" vs "Remote" based on mic vs system channels
   - Full diarization (pyannote.audio): identifies individual speakers

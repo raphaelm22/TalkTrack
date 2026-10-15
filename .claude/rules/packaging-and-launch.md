@@ -14,7 +14,8 @@
 - Verify resolutions with `uv export --extra cpu` / `--extra cuda` (CPU build = `+cpu`, GPU = `+cu126`).
 - Intel GPU transcription needs `openvino-genai`, an optional `openvino` extra (like the AI SDKs, only commented in
   `requirements.txt`). Settings installs it on demand when the Intel GPU device is chosen. It works
-  alongside either torch build: OpenVINO does not use torch.
+  alongside either torch build. Whisper's OpenVINO models need no torch; the speaker-embedding trunk is
+  traced from the loaded torch model on first use (#135), with whichever torch is installed.
 
 ## Dependency version caps
 
