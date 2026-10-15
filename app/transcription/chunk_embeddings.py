@@ -12,13 +12,20 @@ The output is the same as pyannote's loop. On a 5-minute meeting excerpt
 identical speaker centroids, in 93 s instead of 267 s. Embeddings were 96% of
 diarization time.
 
+An accelerator (``set_accelerator``) can take over the network pass, as
+``openvino_embeddings.GpuTrunk`` does on Intel GPUs (#135). If it fails
+mid-run, the remaining batches go back to pyannote's model on the CPU.
+
 No torch import at module level: the test suite cannot load torch (see
 tests/test_chunk_embeddings.py).
 """
+import logging
 import math
 import types
 
 import numpy as np
+
+logger = logging.getLogger(__name__)
 
 
 def supports(pipeline):
@@ -43,6 +50,29 @@ def install(pipeline):
         return False
     pipeline.get_embeddings = types.MethodType(get_embeddings, pipeline)
     return True
+
+
+def set_accelerator(pipeline, accelerator):
+    """Route the network pass through ``accelerator``, or back to the model with None.
+
+    ``accelerator.embed(model, waveforms, weights)`` must return what
+    ``pipeline._embedding(waveforms, masks=weights)`` would. If it raises, the
+    error is kept on ``accelerator.error`` and the run continues without it.
+    """
+    pipeline._chunk_accelerator = accelerator
+
+
+def _embed(self, waveforms, weights):
+    accelerator = getattr(self, "_chunk_accelerator", None)
+    if accelerator is not None:
+        try:
+            return accelerator.embed(self._embedding.model_, waveforms, weights)
+        except Exception as e:
+            logger.warning("Accelerated speaker embeddings failed; continuing on the CPU",
+                           exc_info=True)
+            accelerator.error = e
+            self._chunk_accelerator = None
+    return self._embedding(waveforms, masks=weights)
 
 
 def speaker_weights(masks, clean_masks, min_num_frames):
@@ -98,9 +128,7 @@ def get_embeddings(self, file, binary_segmentations, exclude_overlap=False, hook
         waveforms.append(waveform[None])
         weights.append(speaker_weights(masks, clean[c], min_num_frames))
         if len(waveforms) == batch_size or c == num_chunks - 1:
-            batch = self._embedding(
-                torch.vstack(waveforms), masks=torch.from_numpy(np.stack(weights)),
-            )
+            batch = _embed(self, torch.vstack(waveforms), torch.from_numpy(np.stack(weights)))
             embeddings[start:c + 1] = batch
             start, done = c + 1, done + 1
             waveforms, weights = [], []
