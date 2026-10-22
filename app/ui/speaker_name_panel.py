@@ -159,7 +159,7 @@ class SpeakerNamePanel(QWidget):
             id_link.setCursor(Qt.CursorShape.PointingHandCursor)
             id_link.setStyleSheet(
                 "QPushButton { color: #a6adc8; font-size: 12px; border: none; "
-                "padding: 0; text-align: left; }"
+                "background: transparent; padding: 0; min-width: 0; text-align: left; }"
                 "QPushButton:hover { color: #89b4fa; text-decoration: underline; }"
             )
             id_link.setFixedWidth(100)
